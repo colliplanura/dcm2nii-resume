@@ -300,23 +300,41 @@ process_all() {
   local n_jobs=0
   
   log "Listando subpastas em: $INPUT_DIR (profundidade: $SEARCH_DEPTH)"
+  log "Aguarde, varredura em andamento..."
   
-  # Conta diretórios
-  local all_dirs=$(find "$INPUT_DIR" -maxdepth "$SEARCH_DEPTH" -type d 2>/dev/null)
-  total_found=$(echo "$all_dirs" | wc -l | tr -d ' ')
+  # Busca diretórios mostrando progresso
+  local tmpfile=$(mktemp)
+  local count=0
+  while IFS= read -r dir; do
+    echo "$dir" >> "$tmpfile"
+    count=$((count + 1))
+    if [ $((count % 100)) -eq 0 ]; then
+      printf "\r  Encontradas: %d subpastas..." "$count" >&2
+    fi
+  done < <(find "$INPUT_DIR" -maxdepth "$SEARCH_DEPTH" -type d 2>/dev/null)
+  printf "\r  Encontradas: %d subpastas (concluído)\n" "$count" >&2
   
-  log "Encontradas $total_found subpastas"
+  total_found=$count
+  log "Varredura concluída: $total_found subpastas encontradas"
   
   # Filtra diretórios já processados e conta
   local dirs_to_process=()
+  log "Verificando subpastas já processadas..."
+  count=0
   while IFS= read -r dir; do
+    count=$((count + 1))
+    if [ $((count % 100)) -eq 0 ]; then
+      printf "\r  Verificando: %d/%d..." "$count" "$total_found" >&2
+    fi
     if is_done "$dir"; then
       total_skip=$((total_skip + 1))
     else
       dirs_to_process+=("$dir")
       total_process=$((total_process + 1))
     fi
-  done <<< "$all_dirs"
+  done < "$tmpfile"
+  printf "\r  Verificação concluída: %d/%d                    \n" "$count" "$total_found" >&2
+  rm -f "$tmpfile"
   
   log "Já processadas (skip): $total_skip"
   log "A processar: $total_process"

@@ -5,6 +5,13 @@ Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [1.0.4] - 2026-02-26
+
+### Melhorado
+- Exibição de progresso durante varredura de diretórios (find)
+- Contador visual de subpastas encontradas atualizado a cada 100 diretórios
+- Feedback durante verificação de subpastas já processadas
+
 ## [1.0.3] - 2026-02-26
 
 ### Corrigido
