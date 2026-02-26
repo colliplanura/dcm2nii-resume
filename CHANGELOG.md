@@ -5,6 +5,11 @@ Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [1.0.6] - 2026-02-26
+
+### Melhorado
+- Diretórios sem imagens DICOM são processados silenciosamente (sem mensagem no log)
+
 ## [1.0.5] - 2026-02-26
 
 ### Melhorado

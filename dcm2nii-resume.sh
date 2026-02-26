@@ -288,8 +288,7 @@ process_subdir() {
     local exit_code=$?
     case $exit_code in
       2)
-        log "SKIP: $rel_path (sem imagens DICOM válidas)"
-        # Marca como processado para não tentar novamente
+        # Sem imagens DICOM válidas - marca silenciosamente como processado
         mark_done "$dir"
         ;;
       *)
