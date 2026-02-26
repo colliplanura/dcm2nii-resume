@@ -1,0 +1,10 @@
+# Arquivos de estado (não versionados)
+dcm2nii-done.txt
+dcm2nii-failed.txt
+dcm2nii-resume.log
+dcm2nii-resume.state
+dcm2nii-resume.lock
+*.lock
+
+# macOS
+.DS_Store
