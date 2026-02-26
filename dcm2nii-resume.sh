@@ -145,22 +145,35 @@ is_done() {
   grep -Fxq "$dir" "$DONE_FILE" 2>/dev/null
 }
 
+# Lock usando mkdir (atômico e portável para macOS/Linux)
+acquire_lock() {
+  local lockdir="$1"
+  while ! mkdir "$lockdir" 2>/dev/null; do
+    sleep 0.1
+  done
+}
+
+release_lock() {
+  local lockdir="$1"
+  rmdir "$lockdir" 2>/dev/null || true
+}
+
 # Marca subpasta como processada (thread-safe com lock)
 mark_done() {
   local dir="$1"
-  (
-    flock -x 200
-    echo "$dir" >> "$DONE_FILE"
-  ) 200>"${DONE_FILE}.lock"
+  local lockdir="${DONE_FILE}.lock"
+  acquire_lock "$lockdir"
+  echo "$dir" >> "$DONE_FILE"
+  release_lock "$lockdir"
 }
 
 # Marca subpasta como falha (thread-safe)
 mark_failed() {
   local dir="$1"
-  (
-    flock -x 201
-    echo "$dir" >> "$FAILED_FILE"
-  ) 201>"${FAILED_FILE}.lock"
+  local lockdir="${FAILED_FILE}.lock"
+  acquire_lock "$lockdir"
+  echo "$dir" >> "$FAILED_FILE"
+  release_lock "$lockdir"
 }
 
 # Parse argumentos para extrair origem e opções
