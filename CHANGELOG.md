@@ -5,6 +5,11 @@ Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [1.0.2] - 2026-02-26
+
+### Corrigido
+- Adicionadas aspas ao valor ARGS no STATE_FILE para evitar erro de sintaxe com caracteres especiais
+
 ## [1.0.1] - 2026-02-26
 
 ### Corrigido

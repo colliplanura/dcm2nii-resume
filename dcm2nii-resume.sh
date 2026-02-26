@@ -377,7 +377,7 @@ DESTINATION=$OUTPUT_DIR
 DONE_COUNT=$done_count
 FAILED_COUNT=$failed_count
 OUTPUT_COUNT=$output_count
-ARGS=${ARGS[*]}
+ARGS="${ARGS[*]}"
 EOF
 }
 
