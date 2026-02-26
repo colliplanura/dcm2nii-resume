@@ -286,8 +286,17 @@ process_subdir() {
     return 0
   else
     local exit_code=$?
-    log "FALHA: $rel_path (código: $exit_code)"
-    mark_failed "$dir"
+    case $exit_code in
+      2)
+        log "SKIP: $rel_path (sem imagens DICOM válidas)"
+        # Marca como processado para não tentar novamente
+        mark_done "$dir"
+        ;;
+      *)
+        log "FALHA: $rel_path (código: $exit_code)"
+        mark_failed "$dir"
+        ;;
+    esac
     return $exit_code
   fi
 }

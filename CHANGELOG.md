@@ -5,6 +5,12 @@ Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [1.0.5] - 2026-02-26
+
+### Melhorado
+- Mensagem amigável para diretórios sem imagens DICOM: "SKIP: ... (sem imagens DICOM válidas)" em vez de "FALHA: ... (código: 2)"
+- Diretórios sem DICOM são marcados como processados para evitar reprocessamento
+
 ## [1.0.4] - 2026-02-26
 
 ### Melhorado
