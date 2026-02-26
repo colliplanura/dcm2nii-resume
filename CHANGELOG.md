@@ -5,6 +5,12 @@ Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [1.0.3] - 2026-02-26
+
+### Corrigido
+- Lock files antigos (do código flock) agora são removidos automaticamente antes de criar lock com mkdir
+- Evita travamento infinito quando arquivos .lock existem de execuções anteriores
+
 ## [1.0.2] - 2026-02-26
 
 ### Corrigido

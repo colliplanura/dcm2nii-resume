@@ -148,6 +148,8 @@ is_done() {
 # Lock usando mkdir (atômico e portável para macOS/Linux)
 acquire_lock() {
   local lockdir="$1"
+  # Remove arquivo de lock antigo (do código flock) se existir
+  [ -f "$lockdir" ] && rm -f "$lockdir"
   while ! mkdir "$lockdir" 2>/dev/null; do
     sleep 0.1
   done
@@ -155,7 +157,7 @@ acquire_lock() {
 
 release_lock() {
   local lockdir="$1"
-  rmdir "$lockdir" 2>/dev/null || true
+  rmdir "$lockdir" 2>/dev/null || rm -rf "$lockdir" 2>/dev/null || true
 }
 
 # Marca subpasta como processada (thread-safe com lock)
