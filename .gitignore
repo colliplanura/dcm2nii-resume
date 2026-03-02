@@ -8,3 +8,9 @@ dcm2nii-resume.lock
 
 # macOS
 .DS_Store
+
+# Local/editor artifacts
+.vscode/
+
+# Build artifacts
+bin/
