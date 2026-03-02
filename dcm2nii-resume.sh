@@ -14,36 +14,148 @@ set -euo pipefail
 DCM2NIIX="dcm2niix"
 SEARCH_DEPTH=10
 NUM_CORES=0  # 0 = autodetect
+MAIN_PID="$$"
+UI_DISABLED=false
+BUBBLE_TUI_BIN="./bin/dcm2nii-resume-tui"
+INTERACTIVE_ARGS=()
 
 # Arquivos de controle (serão definidos após parse do OUTPUT_DIR)
 STATE_FILE=""
 LOG_FILE=""
+RAW_LOG_FILE=""
 DONE_FILE=""
 FAILED_FILE=""
 LOCK_FILE=""
+CLEANUP_DONE=false
+
+restore_tty_mode() {
+  if [ -t 0 ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then
+    stty sane < /dev/tty > /dev/tty 2>/dev/null || true
+  fi
+}
+
+tui_rebuild_needed() {
+  [ ! -x "$BUBBLE_TUI_BIN" ] && return 0
+
+  local source_file
+  for source_file in \
+    "./go.mod" \
+    "./go.sum" \
+    "./cmd/dcm2nii-resume-tui/main.go"
+  do
+    if [ -f "$source_file" ] && [ "$source_file" -nt "$BUBBLE_TUI_BIN" ]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
 
 # ============================================================================
 # FUNÇÕES AUXILIARES
 # ============================================================================
+
+offer_bubbletea_install() {
+  if $UI_DISABLED; then
+    return 1
+  fi
+
+  if [ ! -t 0 ] || [ ! -t 1 ] || [ ! -t 2 ]; then
+    return 1
+  fi
+
+  if ! tui_rebuild_needed; then
+    return 0
+  fi
+
+  echo
+  if [ -x "$BUBBLE_TUI_BIN" ]; then
+    echo "Atualização detectada na TUI Bubble Tea. Recompilando..."
+  else
+    echo "Preparando interface full-screen (Bubble Tea)..."
+  fi
+  restore_tty_mode
+
+  if ! command -v go >/dev/null 2>&1; then
+    if command -v brew >/dev/null 2>&1; then
+      echo "Go não encontrado."
+      read -r -p "Instalar Go via Homebrew para habilitar a TUI? [Y/n]: " choice < /dev/tty
+      choice="${choice//$'\r'/}"
+      choice="${choice:-Y}"
+      if [[ "$choice" =~ ^[Yy]$ ]]; then
+        echo "Instalando Go via Homebrew..."
+        if ! brew install go; then
+          echo "Falha ao instalar Go. Continuando em modo texto puro."
+          return 1
+        fi
+      else
+        echo "Instalação do Go recusada. Continuando em modo texto puro."
+        return 1
+      fi
+    else
+      echo "Go e Homebrew não encontrados. Continuando em modo texto puro."
+      return 1
+    fi
+  fi
+
+  echo "Compilando TUI Bubble Tea..."
+  mkdir -p "$(dirname "$BUBBLE_TUI_BIN")"
+  if go mod tidy && go build -o "$BUBBLE_TUI_BIN" ./cmd/dcm2nii-resume-tui; then
+    echo "TUI Bubble Tea pronta."
+    return 0
+  fi
+
+  echo "Falha ao compilar TUI Bubble Tea. Continuando em modo texto puro."
+  return 1
+}
+
+maybe_launch_bubbletea_ui() {
+  if $UI_DISABLED; then
+    return 1
+  fi
+
+  if [ ! -t 0 ] || [ ! -t 1 ] || [ ! -t 2 ]; then
+    return 1
+  fi
+
+  local tui_cmd="$BUBBLE_TUI_BIN"
+  offer_bubbletea_install || return 1
+
+  if [ -x "$tui_cmd" ]; then
+    exec env DCM2NII_RESUME_SCRIPT="$0" "$tui_cmd" "$@"
+  fi
+
+  return 1
+}
+
+append_file_to_raw_log() {
+  local source_file="$1"
+  local lockdir="${RAW_LOG_FILE}.lock"
+  [ -f "$source_file" ] || return 0
+
+  acquire_lock "$lockdir"
+  cat "$source_file" >> "$RAW_LOG_FILE"
+  release_lock "$lockdir"
+}
+
 log() {
   local msg="$(date '+%Y-%m-%d %H:%M:%S') - $*"
   if [ -n "$LOG_FILE" ]; then
-    echo "$msg" | tee -a "$LOG_FILE"
-  else
-    echo "$msg"
+    echo "$msg" >> "$LOG_FILE"
   fi
+  echo "$msg"
 }
 
 log_error() {
   local msg="$(date '+%Y-%m-%d %H:%M:%S') - ERRO: $*"
   if [ -n "$LOG_FILE" ]; then
-    echo "$msg" | tee -a "$LOG_FILE" >&2
-  else
-    echo "$msg" >&2
+    echo "$msg" >> "$LOG_FILE"
   fi
+  echo "$msg" >&2
 }
 
 show_usage() {
+  local exit_code="${1:-2}"
   cat <<EOF
 Uso: $0 [opções] -o <destino> <origem>
 
@@ -51,9 +163,16 @@ Wrapper para dcm2niiXL com controle de continuação.
 Processa diretórios DICOM em paralelo e permite retomada após interrupção.
 
 Opções do script:
+  -h, --help       Mostra esta ajuda e sai
   --dcm2niix CMD   Caminho para dcm2niix (padrão: dcm2niix no PATH)
   --depth N        Profundidade de busca em subpastas (padrão: 10)
   --cores N        Número de threads (padrão: 0 = autodetect)
+  --no-ui          Força modo texto puro (sem Bubble Tea)
+
+Interface rica:
+  Em terminal interativo, o script prioriza a TUI full-screen em Bubble Tea
+  (com ou sem parâmetros, exceto quando --no-ui é informado).
+  Se o binário não estiver disponível, oferece preparação automática via Go/Homebrew.
 
 Opções dcm2niix (com valores padrão):
   -z i|o|y|n     Compressão gzip (padrão: i)
@@ -63,11 +182,15 @@ Opções dcm2niix (com valores padrão):
 
 Arquivos de controle (salvos no diretório de saída):
   dcm2nii-resume.log    Log detalhado
+  dcm2nii-dcm2niix.log  Log bruto do dcm2niix
   dcm2nii-done.txt      Subpastas já convertidas (skip automático)
   dcm2nii-failed.txt    Subpastas que falharam
   dcm2nii-resume.state  Estado da última execução
 
 Exemplos:
+  # Sem parâmetros: modo interativo (pede campos necessários)
+  $0
+
   $0 -o /Users/colliplanura/nifti /Volumes/AAA/AAA1
   
   # Com opções do script:
@@ -76,14 +199,23 @@ Exemplos:
   # Sobrescrevendo opções dcm2niix padrão:
   $0 -z n -v 2 -o /saida /origem
 
+  # Forçar modo texto (sem dashboard):
+  $0 --no-ui -o /saida /origem
+
   # Limpar estado e recomeçar do zero:
   rm -f /destino/dcm2nii-done.txt /destino/dcm2nii-failed.txt
   $0 -o /Users/colliplanura/nifti /Volumes/AAA/AAA1
 EOF
-  exit 2
+  exit "$exit_code"
 }
 
 cleanup() {
+  if $CLEANUP_DONE; then
+    return 0
+  fi
+  CLEANUP_DONE=true
+
+  restore_tty_mode
   # Mata processos filhos em background
   jobs -p | xargs -r kill 2>/dev/null || true
   wait 2>/dev/null || true
@@ -92,6 +224,26 @@ cleanup() {
   if [ -n "$DONE_FILE" ]; then
     log "Subpastas já processadas: $(wc -l < "$DONE_FILE" 2>/dev/null | tr -d ' ' || echo 0)"
   fi
+}
+
+handle_signal() {
+  local signal_name="$1"
+  cleanup
+
+  case "$signal_name" in
+    INT)
+      exit 130
+      ;;
+    TERM)
+      exit 143
+      ;;
+    TSTP)
+      exit 148
+      ;;
+    *)
+      exit 1
+      ;;
+  esac
 }
 
 check_lock() {
@@ -114,19 +266,25 @@ check_dependencies() {
     log_error "Instale dcm2niix no PATH ou use --dcm2niix para especificar o caminho"
     exit 1
   fi
-  log "Usando dcm2niix: $(command -v "$DCM2NIIX")"
+  DCM2NIIX="$(command -v "$DCM2NIIX")"
+  log "Usando dcm2niix: $DCM2NIIX"
 }
 
 init_state_files() {
   # Arquivos de controle são salvos no diretório de saída
   STATE_FILE="${OUTPUT_DIR}/dcm2nii-resume.state"
   LOG_FILE="${OUTPUT_DIR}/dcm2nii-resume.log"
+  RAW_LOG_FILE="${OUTPUT_DIR}/dcm2nii-dcm2niix.log"
   DONE_FILE="${OUTPUT_DIR}/dcm2nii-done.txt"
   FAILED_FILE="${OUTPUT_DIR}/dcm2nii-failed.txt"
   LOCK_FILE="${OUTPUT_DIR}/dcm2nii-resume.lock"
   
   mkdir -p "$OUTPUT_DIR"
-  touch "$DONE_FILE" "$FAILED_FILE" "$LOG_FILE"
+  touch "$DONE_FILE" "$FAILED_FILE" "$LOG_FILE" "$RAW_LOG_FILE"
+}
+
+update_ui_header() {
+  return 0
 }
 
 detect_cores() {
@@ -178,6 +336,61 @@ mark_failed() {
   release_lock "$lockdir"
 }
 
+preparse_ui_flags() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --no-ui)
+        UI_DISABLED=true
+        ;;
+    esac
+    shift
+  done
+}
+
+prompt_with_default_cli() {
+  local label="$1"
+  local default_value="$2"
+  local value
+  read -r -p "$label [$default_value]: " value
+  if [ -z "$value" ]; then
+    value="$default_value"
+  fi
+  printf '%s' "$value"
+}
+
+prompt_required_cli() {
+  local label="$1"
+  local value=""
+  while [ -z "$value" ]; do
+    read -r -p "$label: " value
+  done
+  printf '%s' "$value"
+}
+
+collect_interactive_args() {
+  local input_dir output_dir dcm2niix_cmd depth cores gzip verbosity filename_format
+  echo "Modo interativo (texto puro)"
+  input_dir="$(prompt_required_cli "Diretorio de origem (DICOM)")"
+  output_dir="$(prompt_required_cli "Diretorio de destino (NIfTI)")"
+  dcm2niix_cmd="$(prompt_with_default_cli "Caminho dcm2niix" "$DCM2NIIX")"
+  depth="$(prompt_with_default_cli "Profundidade de busca" "$SEARCH_DEPTH")"
+  cores="$(prompt_with_default_cli "Numero de threads (0=auto)" "$NUM_CORES")"
+  gzip="$(prompt_with_default_cli "Compressao -z (i/o/y/n)" "i")"
+  verbosity="$(prompt_with_default_cli "Verbosidade -v" "0")"
+  filename_format="$(prompt_with_default_cli "Formato -f" "%i-%n-%t-%p-%b-%d")"
+
+  INTERACTIVE_ARGS=(
+    "--dcm2niix" "$dcm2niix_cmd"
+    "--depth" "$depth"
+    "--cores" "$cores"
+    "-z" "$gzip"
+    "-v" "$verbosity"
+    "-f" "$filename_format"
+    "-o" "$output_dir"
+    "$input_dir"
+  )
+}
+
 # Parse argumentos para extrair origem e opções
 parse_args() {
   ARGS=()
@@ -200,6 +413,10 @@ parse_args() {
       --cores)
         NUM_CORES="$2"
         shift 2
+        ;;
+      --no-ui)
+        UI_DISABLED=true
+        shift
         ;;
       -o)
         OUTPUT_DIR="$2"
@@ -259,6 +476,8 @@ parse_args() {
     log_error "Diretório de origem não existe: $INPUT_DIR"
     exit 1
   fi
+
+  update_ui_header
   
   mkdir -p "$OUTPUT_DIR"
 }
@@ -267,6 +486,8 @@ parse_args() {
 process_subdir() {
   local dir="$1"
   local rel_path="${dir#$INPUT_DIR/}"
+  local cmd_log_file
+  local exit_code=0
   
   # Skip se já processado
   if is_done "$dir"; then
@@ -276,16 +497,23 @@ process_subdir() {
   log "PROCESSANDO: $rel_path"
   
   local start_time=$(date +%s)
+  cmd_log_file="$(mktemp)"
   
   # Executa dcm2niix com -d 0 (só processa o diretório atual, não subpastas)
-  if "$DCM2NIIX" -d 0 "${ARGS[@]}" "$dir" >> "$LOG_FILE" 2>&1; then
+  "$DCM2NIIX" -d 0 "${ARGS[@]}" "$dir" > "$cmd_log_file" 2>&1
+  exit_code=$?
+
+  if [ "$exit_code" -eq 0 ]; then
+    append_file_to_raw_log "$cmd_log_file"
+    rm -f "$cmd_log_file"
     local end_time=$(date +%s)
     local elapsed=$((end_time - start_time))
     log "SUCESSO: $rel_path (${elapsed}s)"
     mark_done "$dir"
     return 0
   else
-    local exit_code=$?
+    append_file_to_raw_log "$cmd_log_file"
+    rm -f "$cmd_log_file"
     case $exit_code in
       2)
         # Sem imagens DICOM válidas - marca silenciosamente como processado
@@ -374,7 +602,15 @@ process_all() {
   
   # Aguarda todos os jobs terminarem
   log "Aguardando conclusão dos jobs restantes..."
-  wait
+  while :; do
+    n_jobs=$(jobs -pr | wc -l)
+    [ "$n_jobs" -eq 0 ] && break
+    sleep 0.4
+  done
+
+  if ! wait; then
+    log "Alguns jobs retornaram erro; veja detalhes no log e em $FAILED_FILE"
+  fi
   
   log "Processamento paralelo concluído"
 }
@@ -391,6 +627,7 @@ generate_report() {
   log "Subpastas processadas: $done_count"
   log "Subpastas com falha: $failed_count"
   log "Arquivos NIfTI gerados: $output_count"
+  log "Log bruto dcm2niix: $RAW_LOG_FILE"
   log "============================================"
   
   if [ "$failed_count" -gt 0 ]; then
@@ -413,20 +650,44 @@ EOF
 # EXECUÇÃO PRINCIPAL
 # ============================================================================
 main() {
-  if [ $# -lt 1 ]; then
-    show_usage
+  trap 'handle_signal INT' INT
+  trap 'handle_signal TERM' TERM
+  trap 'handle_signal TSTP' TSTP
+
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+      -h|--help)
+        show_usage 0
+        ;;
+    esac
+  done
+
+  preparse_ui_flags "$@"
+  restore_tty_mode
+  if ! maybe_launch_bubbletea_ui "$@"; then
+    if ! $UI_DISABLED; then
+      log "Bubble Tea indisponível ou bootstrap não concluído. Seguindo em modo texto puro."
+    fi
+    :
   fi
-  
-  # Parse argumentos
-  parse_args "$@"
+
+  if [ $# -lt 1 ]; then
+    if [ ! -t 0 ]; then
+      show_usage
+    fi
+    collect_interactive_args
+    parse_args "${INTERACTIVE_ARGS[@]}"
+  else
+    parse_args "$@"
+  fi
   
   # Setup (init_state_files primeiro pois define os caminhos dos arquivos de controle)
   init_state_files
-  trap cleanup INT TERM
   check_lock
   check_dependencies
   detect_cores
-  
+
   log "============================================"
   log "INICIANDO CONVERSÃO DICOM → NIfTI"
   log "============================================"
