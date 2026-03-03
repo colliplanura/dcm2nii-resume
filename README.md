@@ -66,7 +66,7 @@ Basta executar o mesmo comando novamente:
 ### Recomeçar do zero
 
 ```bash
-rm -f /destino/dcm2nii-done.txt /destino/dcm2nii-failed.txt
+rm -f /destino/.dcm2nii-resume/dcm2nii-done.txt /destino/.dcm2nii-resume/dcm2nii-failed.txt
 ./dcm2nii-resume.sh -o /Users/colliplanura/nifti /Volumes/AAA/AAA1
 ```
 
@@ -90,7 +90,7 @@ rm -f /destino/dcm2nii-done.txt /destino/dcm2nii-failed.txt
 
 ## Arquivos de controle
 
-Os arquivos de controle são salvos no **diretório de saída** (`-o`):
+Os arquivos de controle são salvos em `-o/.dcm2nii-resume`:
 
 | Arquivo | Descrição |
 |---------|-----------|
@@ -99,6 +99,10 @@ Os arquivos de controle são salvos no **diretório de saída** (`-o`):
 | `dcm2nii-done.txt` | Subpastas já convertidas (skip automático) |
 | `dcm2nii-failed.txt` | Subpastas que falharam |
 | `dcm2nii-resume.state` | Estado da última execução |
+
+Mesmo que arquivos `.json` e `.nii.gz` sejam movidos para outro disco/repositório,
+o controle de continuação permanece funcional enquanto os arquivos em `.dcm2nii-resume`
+forem preservados.
 
 ## Requisitos
 
@@ -124,11 +128,13 @@ make doctor
 make deps
 make tui
 make bootstrap
+make test-resume
 ```
 
 `make deps` resolve dependências Go e, se o Go não estiver instalado, oferece instalação via Homebrew.
 `make doctor` executa um diagnóstico rápido de `dcm2niix`, `go`, `brew` e do binário da TUI.
 `make bootstrap` executa o fluxo completo (diagnóstico + dependências + build + execução da TUI).
+`make test-resume` executa um smoke test automatizado para validar o controle de continuação.
 
 Execução manual:
 
@@ -165,6 +171,23 @@ pkill -f dcm2niix
 
 Após interrupção, basta executar novamente o mesmo comando para retomar.
 
+## Autor
+
+**Sandro Colli** (Citação: Colli, Sandro)
+
+Este projeto está sendo desenvolvido no âmbito do **Doutorado em Ciências Médicas** pelo **Instituto D'Or de Pesquisa e Ensino (IDOR)**.
+
+**Orientação**:
+- Dr. Alysson Roncally Silva Carvalho
+- Dr. Rodrigo Basilio
+- Dra. Rosana Souza Rodrigues
+
+[![IDOR](https://img.shields.io/badge/IDOR-Instituto%20D'Or-blue)](https://www.idor.org/)
+
+## Changelog
+
+Consulte [CHANGELOG.md](CHANGELOG.md) para histórico de versões.
+
 ## Licença
 
-MIT
+MIT - Veja [LICENSE](LICENSE) para detalhes.

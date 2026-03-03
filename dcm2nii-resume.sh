@@ -26,6 +26,7 @@ RAW_LOG_FILE=""
 DONE_FILE=""
 FAILED_FILE=""
 LOCK_FILE=""
+CONTROL_DIR=""
 CLEANUP_DONE=false
 
 restore_tty_mode() {
@@ -180,7 +181,7 @@ Opções dcm2niix (com valores padrão):
   -f formato     Formato do nome do arquivo (padrão: %i-%n-%t-%p-%b-%d)
   -o destino     Diretório de saída (OBRIGATÓRIO)
 
-Arquivos de controle (salvos no diretório de saída):
+Arquivos de controle (salvos em /destino/.dcm2nii-resume):
   dcm2nii-resume.log    Log detalhado
   dcm2nii-dcm2niix.log  Log bruto do dcm2niix
   dcm2nii-done.txt      Subpastas já convertidas (skip automático)
@@ -203,7 +204,7 @@ Exemplos:
   $0 --no-ui -o /saida /origem
 
   # Limpar estado e recomeçar do zero:
-  rm -f /destino/dcm2nii-done.txt /destino/dcm2nii-failed.txt
+  rm -f /destino/.dcm2nii-resume/dcm2nii-done.txt /destino/.dcm2nii-resume/dcm2nii-failed.txt
   $0 -o /Users/colliplanura/nifti /Volumes/AAA/AAA1
 EOF
   exit "$exit_code"
@@ -271,15 +272,34 @@ check_dependencies() {
 }
 
 init_state_files() {
-  # Arquivos de controle são salvos no diretório de saída
-  STATE_FILE="${OUTPUT_DIR}/dcm2nii-resume.state"
-  LOG_FILE="${OUTPUT_DIR}/dcm2nii-resume.log"
-  RAW_LOG_FILE="${OUTPUT_DIR}/dcm2nii-dcm2niix.log"
-  DONE_FILE="${OUTPUT_DIR}/dcm2nii-done.txt"
-  FAILED_FILE="${OUTPUT_DIR}/dcm2nii-failed.txt"
-  LOCK_FILE="${OUTPUT_DIR}/dcm2nii-resume.lock"
-  
+  # Arquivos de controle são salvos em uma pasta oculta dedicada
+  # para não serem afetados por movimentação de .json/.nii.gz
+  CONTROL_DIR="${OUTPUT_DIR}/.dcm2nii-resume"
+  STATE_FILE="${CONTROL_DIR}/dcm2nii-resume.state"
+  LOG_FILE="${CONTROL_DIR}/dcm2nii-resume.log"
+  RAW_LOG_FILE="${CONTROL_DIR}/dcm2nii-dcm2niix.log"
+  DONE_FILE="${CONTROL_DIR}/dcm2nii-done.txt"
+  FAILED_FILE="${CONTROL_DIR}/dcm2nii-failed.txt"
+  LOCK_FILE="${CONTROL_DIR}/dcm2nii-resume.lock"
+
   mkdir -p "$OUTPUT_DIR"
+
+  # Migração automática do layout antigo (arquivos no root de saída)
+  local legacy_done="${OUTPUT_DIR}/dcm2nii-done.txt"
+  local legacy_failed="${OUTPUT_DIR}/dcm2nii-failed.txt"
+  local legacy_state="${OUTPUT_DIR}/dcm2nii-resume.state"
+  local legacy_log="${OUTPUT_DIR}/dcm2nii-resume.log"
+  local legacy_raw_log="${OUTPUT_DIR}/dcm2nii-dcm2niix.log"
+  local legacy_lock="${OUTPUT_DIR}/dcm2nii-resume.lock"
+
+  mkdir -p "$CONTROL_DIR"
+  [ -f "$legacy_done" ] && [ ! -f "$DONE_FILE" ] && mv "$legacy_done" "$DONE_FILE"
+  [ -f "$legacy_failed" ] && [ ! -f "$FAILED_FILE" ] && mv "$legacy_failed" "$FAILED_FILE"
+  [ -f "$legacy_state" ] && [ ! -f "$STATE_FILE" ] && mv "$legacy_state" "$STATE_FILE"
+  [ -f "$legacy_log" ] && [ ! -f "$LOG_FILE" ] && mv "$legacy_log" "$LOG_FILE"
+  [ -f "$legacy_raw_log" ] && [ ! -f "$RAW_LOG_FILE" ] && mv "$legacy_raw_log" "$RAW_LOG_FILE"
+  [ -f "$legacy_lock" ] && [ ! -f "$LOCK_FILE" ] && mv "$legacy_lock" "$LOCK_FILE"
+
   touch "$DONE_FILE" "$FAILED_FILE" "$LOG_FILE" "$RAW_LOG_FILE"
 }
 
@@ -500,8 +520,11 @@ process_subdir() {
   cmd_log_file="$(mktemp)"
   
   # Executa dcm2niix com -d 0 (só processa o diretório atual, não subpastas)
-  "$DCM2NIIX" -d 0 "${ARGS[@]}" "$dir" > "$cmd_log_file" 2>&1
-  exit_code=$?
+  if "$DCM2NIIX" -d 0 "${ARGS[@]}" "$dir" > "$cmd_log_file" 2>&1; then
+    exit_code=0
+  else
+    exit_code=$?
+  fi
 
   if [ "$exit_code" -eq 0 ]; then
     append_file_to_raw_log "$cmd_log_file"

@@ -4,7 +4,7 @@ TUI_BIN := ./bin/dcm2nii-resume-tui
 TUI_PKG := ./cmd/dcm2nii-resume-tui
 SCRIPT := ./dcm2nii-resume.sh
 
-.PHONY: doctor deps tui tui-run bootstrap clean
+.PHONY: doctor deps tui tui-run bootstrap test-resume clean
 
 doctor:
 	@echo "== dcm2nii-resume doctor =="
@@ -58,6 +58,9 @@ tui-run: tui
 	DCM2NII_RESUME_SCRIPT=$(SCRIPT) $(TUI_BIN)
 
 bootstrap: doctor deps tui-run
+
+test-resume:
+	bash ./scripts/test_resume_smoke.sh
 
 clean:
 	rm -rf ./bin

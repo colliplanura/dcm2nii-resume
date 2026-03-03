@@ -50,6 +50,13 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - Fallback da interface rica passa a ser exclusivamente modo texto puro.
 - `make doctor` simplificado para checar `dcm2niix`, `go`, `brew` e binário da TUI.
 
+## [1.1.4] - 2026-03-03
+
+### Melhorado
+- Arquivos de controle de continuação passam a ser armazenados em `/destino/.dcm2nii-resume`, protegendo o estado quando `.json`/`.nii.gz` são movidos para liberar espaço.
+- Migração automática do layout legado (arquivos no root do destino) para o novo diretório oculto.
+- `make test-resume` expandido para validar retomada mesmo após mover outputs `.json`/`.nii.gz`.
+
 ## [1.0.6] - 2026-02-26
 
 ### Melhorado
